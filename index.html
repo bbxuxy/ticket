@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flight Booking System Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-database-compat.js"></script>
+    <style>
+        :root { --light-blue: #e0f2fe; --white: #ffffff; --green: #22c55e; --blue-text: #0369a1; --yellow: #facc15; --red: #ef4444; --dark-blue: #1e40af; }
+        body { font-family: 'Kanit', sans-serif; background-color: #f8fafc; margin: 0; padding-bottom: 80px; color: #334155; }
+        .nav-top, .nav-bottom { background-color: var(--light-blue); padding: 15px; display: flex; justify-content: center; gap: 10px; }
+        .nav-bottom { position: fixed; bottom: 0; width: 100%; border-top: 2px solid #bae6fd; z-index: 50; }
+        .card-white { background: var(--white); border-radius: 15px; padding: 15px; border: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); position: relative; }
+        .btn-nav { background: var(--white); border-radius: 12px; border: 1px solid #bae6fd; padding: 10px 15px; cursor: pointer; color: var(--blue-text); font-weight: 600; transition: 0.2s; text-align: center; }
+        .btn-nav:active { transform: scale(0.95); }
+        .page { display: none; padding: 20px; max-width: 500px; margin: auto; }
+        .active { display: block; }
+        select, input { width: 100%; padding: 12px; margin: 8px 0; border-radius: 12px; border: 1px solid #cbd5e1; box-sizing: border-box; font-family: 'Kanit'; }
+        .popup { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 85%; max-width: 350px; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.3); z-index: 100; text-align: center; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); z-index: 90; }
+        .admin-btn { position: absolute; top: 10px; right: 10px; width: 35px; height: 35px; border-radius: 50%; border: none; background: var(--white); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .ticket-id { position: absolute; top: 15px; right: 15px; font-size: 0.85rem; font-weight: bold; color: var(--blue-text); }
+        .status-text { color: var(--green); font-weight: 500; font-size: 0.9rem; margin-top: 5px; text-align: left; }
+        
+        .air-ticket { background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 15px rgba(0,0,0,0.1); color: #333; text-align: left; }
+        .ticket-header { background: var(--dark-blue); color: white; padding: 15px; display: flex; justify-content: space-between; align-items: center; }
+        .ticket-body { padding: 20px; border-bottom: 2px dashed #cbd5e1; position: relative; }
+        .ticket-body::before, .ticket-body::after { content: ''; position: absolute; bottom: -10px; width: 20px; height: 20px; background: #f8fafc; border-radius: 50%; }
+        .ticket-body::before { left: -10px; } .ticket-body::after { right: -10px; }
+        .ticket-row { display: flex; justify-content: space-between; margin-bottom: 15px; }
+        .t-label { font-size: 0.7rem; color: #64748b; text-transform: uppercase; }
+        .t-value { font-weight: 600; font-size: 1rem; color: #1e293b; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 10px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="overlay" id="overlay" onclick="hidePopups()"></div>
+
+<div class="nav-top">
+    <div class="card-white" style="width: 100%;">
+        <select id="airlineSelect" onchange="updateRoutes()"><option value="">เลือกสายการบิน</option><option value="Thai airways">Thai airways</option><option value="Japan airlines">Japan airlines</option><option value="Emirates">Emirates</option></select>
+        <select id="routeSelect"></select>
+        <select id="classSelect"><option value="economy">Economy</option><option value="business">Business</option><option value="first">First Class</option></select>
+        <button class="btn-nav" style="width:100%; background:var(--light-blue);" onclick="searchFlight()">ค้นหา</button>
+    </div>
+</div>
+
+<div id="home" class="page active"><div id="searchResult"></div></div>
+
+<div id="credit" class="page">
+    <div class="card-white" style="background: var(--light-blue); text-align: center; padding: 40px 20px;">
+        <h3>เครดิตคงเหลือ</h3>
+        <h2 id="balanceDisp">0.00 ¢</h2>
+        <p style="font-size: 0.8rem; color: #64748b;">*ติดต่อเจ้าหน้าที่เพื่อเติมเครดิต</p>
+    </div>
+</div>
+
+<div id="myTickets" class="page">
+    <button class="admin-btn" onclick="showPopup('adminLoginPopup')">🛠️</button>
+    <h3>ตั๋วของฉัน</h3>
+    <div id="ticketList"></div>
+</div>
+
+<div id="nameInputPopup" class="popup">
+    <h3 style="margin-top:0;">ระบุชื่อผู้เดินทาง</h3>
+    <input type="text" id="passengerName" placeholder="ชื่อ-นามสกุล ภาษาอังกฤษ">
+    <div style="display:flex; gap:10px; margin-top:10px;">
+        <button class="btn-nav" style="flex:1;" onclick="hidePopups()">ยกเลิก</button>
+        <button class="btn-nav" style="flex:1; background:var(--blue-text); color:white;" onclick="confirmBookingWithName()">ถัดไป</button>
+    </div>
+</div>
+
+<div id="confirmPopup" class="popup">
+    <h3 style="margin-top:0;">ยืนยันการจอง?</h3>
+    <div id="confirmDetail" style="font-size: 0.9rem; margin-bottom: 15px; text-align: left;"></div>
+    <div style="display:flex; gap:10px;">
+        <button class="btn-nav" style="flex:1; background:var(--red); color:white; border:none;" onclick="hidePopups()">ยกเลิก</button>
+        <button class="btn-nav" style="flex:1; background:var(--green); color:white; border:none;" onclick="executeBooking()">ยืนยัน</button>
+    </div>
+</div>
+
+<div id="ticketDetailPopup" class="popup" style="padding: 0; background: transparent; box-shadow: none; max-width: 380px;">
+    <div id="ticketContent"></div>
+    <button class="btn-nav" style="width:100%; margin-top:15px; background:white;" onclick="hidePopups()">ปิดหน้าต่าง</button>
+</div>
+
+<div id="successPopup" class="popup">
+    <h3 style="color: var(--green);">จองตั๋วสำเร็จ !</h3>
+    <p id="successTicketID" style="font-weight: 600; font-size: 1.1rem; margin: 15px 0;"></p>
+    <button class="btn-nav" style="width:100%; background: var(--blue-text); color: white; border: none;" onclick="hidePopups()">รับทราบ</button>
+</div>
+
+<div id="adminLoginPopup" class="popup">
+    <h3>เจ้าหน้าที่</h3>
+    <input type="password" id="adminPass" placeholder="ใส่รหัสเจ้าหน้าที่">
+    <button class="btn-nav" style="width:100%;" onclick="checkAdminLogin()">เข้าสู่ระบบ</button>
+</div>
+
+<div id="adminPanelPopup" class="popup">
+    <h3 style="margin-top:0;">ระบบจัดการ</h3>
+    <div style="border-bottom: 1px solid #eee; margin-bottom:10px; padding-bottom:10px;">
+        <p style="font-weight:600; margin:5px 0; text-align: left;">เติมเครดิต (ทุกเครื่อง)</p>
+        <input type="number" id="topupAmount" placeholder="จำนวนเครดิต">
+        <button class="btn-nav" style="width:100%; background:var(--blue-text); color:white;" onclick="processTopup()">เติมเงิน</button>
+    </div>
+    <div>
+        <p style="font-weight:600; margin:5px 0; text-align: left;">อัพเดทสถานะตั๋ว</p>
+        <input type="text" id="targetTicketId" placeholder="เลข 4 หลักหลัง">
+        <input type="text" id="newStatus" placeholder="ข้อความสถานะ">
+        <button class="btn-nav" style="width:100%; background:var(--green); color:white;" onclick="updateTicketStatus()">อัพเดทสถานะ</button>
+    </div>
+</div>
+
+<div id="loadingPopup" class="popup" style="text-align: center;"><div class="loader"></div><p>กำลังโหลดข้อมูล...</p></div>
+
+<div class="nav-bottom">
+    <button class="btn-nav" onclick="showPage('home')">หน้าหลัก</button>
+    <button class="btn-nav" onclick="showPage('credit')">หน้าเครดิต</button>
+    <button class="btn-nav" onclick="showPage('myTickets')">ตั๋วของฉัน</button>
+</div>
+
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyCtJgeeHouvqPhUGwWlFc7sE6bGE_gb7OU",
+        authDomain: "game-3ea73.firebaseapp.com",
+        projectId: "game-3ea73",
+        databaseURL: "https://game-3ea73-default-rtdb.firebaseio.com/",
+        storageBucket: "game-3ea73.firebasestorage.app",
+        messagingSenderId: "382098286565",
+        appId: "1:382098286565:web:95bc200c2e4930ebf0f10c"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let currentWallet = 0;
+    let pendingBooking = null;
+    let allTickets = {};
+
+    // ระบบติดตามยอดเงิน Real-time จาก Firebase
+    db.ref('wallet/balance').on('value', (snapshot) => {
+        currentWallet = snapshot.val() || 0;
+        document.getElementById('balanceDisp').innerText = currentWallet.toFixed(2) + " ¢";
+    });
+
+    const flightData = {
+        "Thai airways": { prefix: "TG", routes: { "ไทย - ญี่ปุ่น": [20000, 45000, 125000], "ไทย - ดูไบ": [34500, 55000, 150000] } },
+        "Japan airlines": { prefix: "JP", routes: { "ญี่ปุ่น - ไทย": [20500, 57500, 150000], "ญี่ปุ่น - ดูไบ": [52000, 72500, 175000] } },
+        "Emirates": { prefix: "EM", routes: { "ดูไบ - ไทย": [75900, 125900, 235000], "ญี่ปุ่น - ดูไบ": [82500, 150000, 450000] } }
+    };
+
+    function showPage(id) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+    }
+
+    function updateRoutes() {
+        const air = document.getElementById('airlineSelect').value;
+        const routeSel = document.getElementById('routeSelect');
+        routeSel.innerHTML = '';
+        if(air) Object.keys(flightData[air].routes).forEach(r => routeSel.innerHTML += `<option value="${r}">${r}</option>`);
+    }
+
+    function searchFlight() {
+        const air = document.getElementById('airlineSelect').value;
+        const route = document.getElementById('routeSelect').value;
+        const cls = document.getElementById('classSelect').value;
+        if(!air) return;
+        const price = flightData[air].routes[route][["economy", "business", "first"].indexOf(cls)];
+        document.getElementById('searchResult').innerHTML = `<div class="card-white"><h3 style="margin:0 0 10px 0;">${air}</h3><p style="margin:5px 0;">${route}</p><p style="margin:5px 0;">ชั้น: ${cls.toUpperCase()}</p><p style="margin:5px 0;">ราคา: <b>${price.toLocaleString()} ¢</b></p><button class="btn-nav" style="width:100%; background:var(--yellow); border:none; margin-top:10px;" onclick="askName('${air}','${route}',${price},'${cls}')">จองตั๋ว</button></div>`;
+    }
+
+    function askName(air, route, price, cls) {
+        pendingBooking = { air, route, price, cls };
+        showPopup('nameInputPopup');
+    }
+
+    function confirmBookingWithName() {
+        const name = document.getElementById('passengerName').value;
+        if(!name) return alert('กรุณาระบุชื่อผู้เดินทาง');
+        pendingBooking.passenger = name;
+        hidePopups();
+        document.getElementById('confirmDetail').innerHTML = `<p>ผู้เดินทาง: <b>${name}</b></p><p>สายการบิน: <b>${pendingBooking.air}</b></p><p>เส้นทาง: ${pendingBooking.route}</p><p>ราคา: <b>${pendingBooking.price.toLocaleString()} ¢</b></p>`;
+        showPopup('confirmPopup');
+    }
+
+    function executeBooking() {
+        if(currentWallet < pendingBooking.price) {
+            hidePopups();
+            return alert('เครดิตไม่เพียงพอ กรุณาติดต่อเจ้าหน้าที่');
+        }
+        
+        // หักเงินผ่าน Firebase เพื่อให้ทุกเครื่องเห็นยอดใหม่
+        const newBalance = currentWallet - pendingBooking.price;
+        db.ref('wallet/balance').set(newBalance);
+
+        const randNum = Math.floor(1000 + Math.random() * 9000);
+        const ticketID = `${flightData[pendingBooking.air].prefix}-${randNum}`;
+        const flightNo = `${flightData[pendingBooking.air].prefix}${Math.floor(100 + Math.random()*899)}`;
+        const gate = String.fromCharCode(65 + Math.floor(Math.random() * 6)) + Math.floor(Math.random() * 20 + 1);
+        const boardingTime = `${Math.floor(Math.random()*24).toString().padStart(2,'0')}:${Math.floor(Math.random()*60).toString().padStart(2,'0')}`;
+        const now = new Date();
+        const bookedAt = now.toLocaleDateString('th-TH') + " " + now.toLocaleTimeString('th-TH', {hour:'2-digit', minute:'2-digit'});
+
+        db.ref('tickets/' + randNum).set({
+            id: ticketID, air: pendingBooking.air, route: pendingBooking.route, 
+            price: pendingBooking.price, cls: pendingBooking.cls, 
+            boarding: boardingTime, status: "รอตรวจสอบ", 
+            passenger: pendingBooking.passenger, flight: flightNo,
+            gate: gate, bookedAt: bookedAt
+        });
+        
+        hidePopups();
+        document.getElementById('successTicketID').innerText = "หมายเลขตั๋วของคุณคือ " + ticketID;
+        showPopup('successPopup');
+        document.getElementById('passengerName').value = '';
+    }
+
+    function viewTicket(idKey) {
+        const t = allTickets[idKey];
+        const [from, to] = t.route.split(' - ');
+        document.getElementById('ticketContent').innerHTML = `<div class="air-ticket"><div class="ticket-header"><span style="font-weight:600;">BOARDING PASS</span><span>${t.air}</span></div><div class="ticket-body"><div class="ticket-row"><div><div class="t-label">PASSENGER NAME</div><div class="t-value">${t.passenger}</div></div><div style="text-align:right;"><div class="t-label">CLASS</div><div class="t-value">${t.cls.toUpperCase()}</div></div></div><div class="ticket-row"><div><div class="t-label">FROM</div><div class="t-value">${from}</div></div><div style="text-align:right;"><div class="t-label">TO</div><div class="t-value">${to}</div></div></div><div class="ticket-row"><div><div class="t-label">FLIGHT</div><div class="t-value">${t.flight}</div></div><div><div class="t-label">GATE</div><div class="t-value">${t.gate}</div></div><div style="text-align:right;"><div class="t-label">BOARDING</div><div class="t-value" style="color:var(--red);">${t.boarding}</div></div></div></div><div style="padding:15px; font-size:0.7rem; color:#94a3b8; display:flex; justify-content:space-between;"><span>BOOKED AT: ${t.bookedAt}</span><span style="font-weight:bold; color:var(--blue-text);">${t.id}</span></div></div>`;
+        showPopup('ticketDetailPopup');
+    }
+
+    function processTopup() {
+        const amount = parseFloat(document.getElementById('topupAmount').value || 0);
+        if(amount <= 0) return alert('ระบุจำนวนเงิน');
+        hidePopups();
+        showPopup('loadingPopup');
+        
+        // อัปเดตเงินขึ้น Firebase (ทุกเครื่องจะอัปเดตตามทันที)
+        db.ref('wallet/balance').set(currentWallet + amount).then(() => {
+            setTimeout(() => {
+                hidePopups();
+                alert('เติมเงินเรียบร้อยแล้ว (ทุกเครื่องได้รับการอัปเดต)');
+                document.getElementById('topupAmount').value = '';
+            }, 1000);
+        });
+    }
+
+    function showPopup(id) { document.getElementById('overlay').style.display = 'block'; document.getElementById(id).style.display = 'block'; }
+    function hidePopups() { document.getElementById('overlay').style.display = 'none'; document.querySelectorAll('.popup').forEach(p => p.style.display = 'none'); }
+    function checkAdminLogin() { if(document.getElementById('adminPass').value === '041718') { hidePopups(); showPopup('adminPanelPopup'); } else { alert('รหัสผิด'); } }
+    
+    function updateTicketStatus() {
+        const id = document.getElementById('targetTicketId').value;
+        const msg = document.getElementById('newStatus').value;
+        if(id && msg) { db.ref('tickets/' + id).update({ status: msg }); alert('อัพเดทสถานะสำเร็จ'); hidePopups(); }
+    }
+
+    db.ref('tickets').on('value', (snapshot) => {
+        const list = document.getElementById('ticketList');
+        list.innerHTML = '';
+        allTickets = snapshot.val() || {};
+        Object.keys(allTickets).forEach(key => {
+            const t = allTickets[key];
+            list.innerHTML += `<div class="card-white" onclick="viewTicket('${key}')" style="margin-bottom:15px; border-left: 6px solid var(--blue-text); text-align: left; cursor:pointer;"><div class="ticket-id">${t.id}</div><div style="font-weight:600; color:var(--blue-text);">${t.air}</div><div style="font-size:0.9rem;">${t.route}</div><div style="font-size:0.8rem; color:#64748b;">Passenger: ${t.passenger}</div><div class="status-text">🟢 ${t.status}</div><div style="font-size:0.7rem; color:#cbd5e1; margin-top:5px;">แตะเพื่อดูตั๋ว</div></div>`;
+        });
+    });
+
+    updateRoutes();
+</script>
+</body>
+</html>
